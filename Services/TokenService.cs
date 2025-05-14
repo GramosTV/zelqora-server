@@ -21,9 +21,7 @@ public class TokenService : ITokenService
     public TokenService(IConfiguration configuration)
     {
         _configuration = configuration;
-    }
-
-    public string GenerateAccessToken(User user)
+    }    public string GenerateAccessToken(User user)
     {
         var claims = new List<Claim>
         {
@@ -31,7 +29,8 @@ public class TokenService : ITokenService
             new(ClaimTypes.Email, user.Email),
             new(ClaimTypes.GivenName, user.FirstName),
             new(ClaimTypes.Surname, user.LastName),
-            new(ClaimTypes.Role, user.Role.ToString())
+            new(ClaimTypes.Role, user.Role.ToString()),
+            new("userId", user.Id) // Add custom userId claim for easier processing in frontend
         }; var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(
             _configuration["Jwt:Key"] ?? "Q9GD4P3PuPzYw5nvRNAD7yBSqGjZqQHP6gYjvuVT8F6RRQyhxQ"));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
