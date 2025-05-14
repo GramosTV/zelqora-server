@@ -1,0 +1,84 @@
+## .NET Core / .NET 5+ / ASP.NET Core
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.pdb
+
+# Build results
+*.exe
+*.dll
+
+# Rider
+.idea/
+
+# VS Code
+.vscode/
+.history/
+
+# Visual Studio
+.vs/
+*.csproj.user
+
+# NuGet packages
+*.nupkg
+*.snupkg
+*.nuspec
+packages/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# ASP.NET Scaffolding
+ScaffoldingReadMe.txt
+
+# Dotnet CLI
+*.dbmdl
+*.log
+*.tlog
+*.tmp
+*.cache
+*.bak
+*.Backup
+*.orig
+*.swp
+
+# Configuration files
+appsettings.Development.json
+appsettings.Local.json
+appsettings.*.json.user
+
+# User secrets
+secrets.json
+
+# Logs
+*.log
+
+# Database
+*.mdf
+*.ldf
+*.sqlite
+
+# Publish directory
+publish/
+out/
+
+# Coverage reports
+coverage/
+coverage*.json
+coverage*.xml
+*.coverage
+*.coveragexml
+TestResults/
+*.trx
+
+# Resharper
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+# Local environment
+.env
+.env.*
