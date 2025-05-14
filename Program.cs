@@ -1,5 +1,6 @@
 using System.Text;
 using HealthcareApi.Data;
+using HealthcareApi.Middleware;
 using HealthcareApi.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -67,6 +68,8 @@ builder.Services.AddScoped<HealthcareApi.Services.ITokenService, HealthcareApi.S
 var app = builder.Build();
 
 // Configure the HTTP request pipeline
+app.UseMiddleware<ErrorHandlingMiddleware>();
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
