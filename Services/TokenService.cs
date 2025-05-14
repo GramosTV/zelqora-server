@@ -21,7 +21,8 @@ public class TokenService : ITokenService
     public TokenService(IConfiguration configuration)
     {
         _configuration = configuration;
-    }    public string GenerateAccessToken(User user)
+    }
+    public string GenerateAccessToken(User user)
     {
         var claims = new List<Claim>
         {
