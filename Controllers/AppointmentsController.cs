@@ -86,16 +86,15 @@ public class AppointmentsController : ControllerBase
             return StatusCode(500, new { message = "An error occurred while retrieving the appointment" });
         }
     }
-
     [HttpGet("doctor/{doctorId}")]
     public async Task<IActionResult> GetAppointmentsByDoctor(string doctorId)
     {
         try
         {
-            // Check if the user has permission to view these appointments
             var currentUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
 
+            // Only the doctor themselves or an admin can see their appointments
             if (userRole != "Admin" && doctorId != currentUserId)
             {
                 return Forbid();
@@ -106,23 +105,29 @@ public class AppointmentsController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error retrieving appointments for doctor {DoctorId}", doctorId);
+            _logger.LogError(ex, "Error retrieving doctor appointments");
             return StatusCode(500, new { message = "An error occurred while retrieving appointments" });
         }
     }
-
     [HttpGet("patient/{patientId}")]
     public async Task<IActionResult> GetAppointmentsByPatient(string patientId)
     {
         try
         {
-            // Check if the user has permission to view these appointments
             var currentUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
 
-            if (userRole != "Admin" && userRole != "Doctor" && patientId != currentUserId)
+            // Only the patient themselves, their doctor, or an admin can see their appointments
+            if (userRole != "Admin" && patientId != currentUserId)
             {
-                return Forbid();
+                // For simplicity, we'll just check if they're a doctor
+                if (userRole != "Doctor")
+                {
+                    return Forbid();
+                }
+
+                // In a complete implementation, we'd check if they're specifically this patient's doctor
+                // This would require a more complex query that's beyond our current scope
             }
 
             var appointments = await _appointmentService.GetAppointmentsByPatientIdAsync(patientId);
@@ -130,26 +135,25 @@ public class AppointmentsController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error retrieving appointments for patient {PatientId}", patientId);
+            _logger.LogError(ex, "Error retrieving patient appointments");
             return StatusCode(500, new { message = "An error occurred while retrieving appointments" });
         }
     }
-
     [HttpGet("user/{userId}")]
     public async Task<IActionResult> GetAppointmentsByUser(string userId)
     {
         try
         {
-            // Check if the user has permission to view these appointments
             var currentUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
 
+            // Users can only access their own appointments unless they're admins
             if (userRole != "Admin" && userId != currentUserId)
             {
                 return Forbid();
             }
 
-            // Check if the user is a doctor or patient
+            // Determine if the user is a doctor or patient and call the appropriate method
             if (userRole == "Doctor")
             {
                 var appointments = await _appointmentService.GetAppointmentsByDoctorIdAsync(userId);
@@ -162,13 +166,14 @@ public class AppointmentsController : ControllerBase
             }
             else
             {
+                // For admins or other roles, get all appointments
                 var appointments = await _appointmentService.GetAllAppointmentsAsync();
                 return Ok(appointments);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error retrieving appointments for user {UserId}", userId);
+            _logger.LogError(ex, "Error retrieving user appointments");
             return StatusCode(500, new { message = "An error occurred while retrieving appointments" });
         }
     }
