@@ -32,8 +32,15 @@ public class TokenService : ITokenService
             new(ClaimTypes.Surname, user.LastName),
             new(ClaimTypes.Role, user.Role.ToString()),
             new("userId", user.Id) // Add custom userId claim for easier processing in frontend
-        }; var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(
-            _configuration["Jwt:Key"] ?? "Q9GD4P3PuPzYw5nvRNAD7yBSqGjZqQHP6gYjvuVT8F6RRQyhxQ"));
+        };
+
+        var jwtKey = _configuration["Jwt:Key"];
+        if (string.IsNullOrEmpty(jwtKey))
+        {
+            throw new InvalidOperationException("JWT Key is not configured");
+        }
+
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
         var expires = DateTime.Now.AddHours(1); var token = new JwtSecurityToken(
             _configuration["Jwt:Issuer"] ?? "HealthcareApi",
@@ -56,6 +63,12 @@ public class TokenService : ITokenService
 
     public ClaimsPrincipal GetPrincipalFromExpiredToken(string token)
     {
+        var jwtKey = _configuration["Jwt:Key"];
+        if (string.IsNullOrEmpty(jwtKey))
+        {
+            throw new InvalidOperationException("JWT Key is not configured");
+        }
+
         var tokenValidationParameters = new TokenValidationParameters
         {
             ValidateAudience = true,
@@ -63,8 +76,7 @@ public class TokenService : ITokenService
             ValidateIssuer = true,
             ValidIssuer = _configuration["Jwt:Issuer"] ?? "HealthcareApi",
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(
-                _configuration["Jwt:Key"] ?? "Q9GD4P3PuPzYw5nvRNAD7yBSqGjZqQHP6gYjvuVT8F6RRQyhxQ")),
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
             ValidateLifetime = false // We don't care about the token's expiration date
         };
 

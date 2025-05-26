@@ -1,5 +1,9 @@
 # Healthcare API
 
+**Related Repositories:**
+
+- [Zelqora Client (Angular App)](https://github.com/GramosTV/zelqora-client)
+
 A .NET Web API backend for a healthcare application that provides authentication, user management, appointment scheduling, messaging, and reminders.
 
 ## Features
@@ -13,7 +17,7 @@ A .NET Web API backend for a healthcare application that provides authentication
 ## Tech Stack
 
 - ASP.NET Core 9.0
-- Entity Framework Core with SQLite
+- Entity Framework Core with MySQL
 - JWT Authentication
 - CORS support for Angular integration
 
@@ -84,7 +88,7 @@ In development mode, the API also allows requests from any origin for testing pu
 
 ## Database
 
-The application uses SQLite for data storage. The database is automatically created and seeded with sample data when the application runs for the first time.
+The application uses MySQL for data storage. The database is automatically created and seeded with sample data when the application runs for the first time.
 
 ## License
 

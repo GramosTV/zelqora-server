@@ -9,9 +9,10 @@ using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add database context
+// Add database context - MySQL
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString)));
 
 // Add services to the container
 builder.Services.AddControllers();
@@ -44,6 +45,11 @@ builder.Services.AddCors(options =>
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
+        var jwtKey = builder.Configuration["Jwt:Key"];
+        if (string.IsNullOrEmpty(jwtKey))
+        {
+            throw new InvalidOperationException("JWT Key is not configured");
+        }
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
@@ -52,8 +58,33 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             ValidIssuer = builder.Configuration["Jwt:Issuer"] ?? "HealthcareApi",
             ValidAudience = builder.Configuration["Jwt:Audience"] ?? "HealthcareApp",
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(
-                builder.Configuration["Jwt:Key"] ?? "Q9GD4P3PuPzYw5nvRNAD7yBSqGjZqQHP6gYjvuVT8F6RRQyhxQ"))
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+        };
+
+        // Add event handlers for debugging authentication issues
+        options.Events = new JwtBearerEvents
+        {
+            OnAuthenticationFailed = context =>
+            {
+                var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+                logger.LogError("Authentication failed: {Exception}", context.Exception);
+                return Task.CompletedTask;
+            },
+            OnTokenValidated = context =>
+            {
+                var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+                logger.LogInformation("Token validated successfully for {User}", context.Principal?.Identity?.Name ?? "unknown user");
+                return Task.CompletedTask;
+            },
+            OnMessageReceived = context =>
+            {
+                var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+                if (string.IsNullOrEmpty(context.Token))
+                {
+                    logger.LogWarning("No token found in request");
+                }
+                return Task.CompletedTask;
+            }
         };
     });
 
@@ -93,20 +124,35 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// Create database if it doesn't exist
+// Create and seed database if needed
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
     try
     {
         var context = services.GetRequiredService<ApplicationDbContext>();
-        context.Database.EnsureCreated();
+
+        // For development, you can use EnsureDeleted() followed by EnsureCreated() during development
+        // to recreate the database when model changes. Comment this out in production!
+        if (app.Environment.IsDevelopment())
+        {
+            // Be careful! This will delete the database.
+            // context.Database.EnsureDeleted();
+        }
+
+        // Create the database if it doesn't exist
+        context.Database.Migrate();
+
+        // Seed with initial data
         DbInitializer.Initialize(context);
+
+        var logger = services.GetRequiredService<ILogger<Program>>();
+        logger.LogInformation("Database initialized successfully.");
     }
     catch (Exception ex)
     {
         var logger = services.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "An error occurred while creating the database.");
+        logger.LogError(ex, "An error occurred while initializing the database.");
     }
 }
 

@@ -71,6 +71,21 @@ public class UsersController : ControllerBase
         }
     }
 
+    [HttpGet("doctors-list")]
+    public async Task<IActionResult> GetDoctorList()
+    {
+        try
+        {
+            var doctors = await _userService.GetDoctorListAsync();
+            return Ok(doctors);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving doctor list");
+            return StatusCode(500, new { message = "An error occurred while retrieving doctor list" });
+        }
+    }
+
     [HttpGet("patients")]
     public async Task<IActionResult> GetPatients()
     {

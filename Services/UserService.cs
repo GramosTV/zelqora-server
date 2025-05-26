@@ -10,6 +10,7 @@ public interface IUserService
     Task<List<UserDto>> GetAllUsersAsync();
     Task<UserDto?> GetUserByIdAsync(string id);
     Task<List<UserDto>> GetDoctorsAsync();
+    Task<List<DoctorDto>> GetDoctorListAsync(); // Add new method for DoctorDto
     Task<List<UserDto>> GetPatientsAsync();
     Task<UserDto> UpdateUserAsync(string id, UserUpdateDto userUpdateDto);
     Task<UserDto> CreateUserAsync(UserRegistrationDto userDto);
@@ -46,6 +47,21 @@ public class UserService : IUserService
             .ToListAsync();
 
         return doctors.Select(MapUserToDto).ToList();
+    }
+
+    public async Task<List<DoctorDto>> GetDoctorListAsync() // Implement new method
+    {
+        var doctors = await _context.Users
+            .Where(u => u.Role == UserRole.Doctor)
+            .Select(u => new DoctorDto
+            {
+                Id = u.Id,
+                FirstName = u.FirstName,
+                LastName = u.LastName,
+                Specialization = u.Specialization
+            })
+            .ToListAsync();
+        return doctors;
     }
 
     public async Task<List<UserDto>> GetPatientsAsync()
