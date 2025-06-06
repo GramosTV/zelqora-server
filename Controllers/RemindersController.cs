@@ -1,5 +1,7 @@
 using HealthcareApi.DTOs;
 using HealthcareApi.Services;
+using HealthcareApi.Helpers;
+using HealthcareApi.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -19,9 +21,8 @@ public class RemindersController : ControllerBase
         _reminderService = reminderService;
         _logger = logger;
     }
-
     [HttpGet]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = nameof(UserRole.Admin))]
     public async Task<IActionResult> GetAllReminders()
     {
         try
@@ -46,13 +47,10 @@ public class RemindersController : ControllerBase
             if (reminder == null)
             {
                 return NotFound(new { message = $"Reminder with ID {id} not found" });
-            }
-
-            // Check if the user has permission to view this reminder
+            }            // Check if the user has permission to view this reminder
             var currentUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
 
-            if (userRole != "Admin" && reminder.UserId != currentUserId)
+            if (!RoleHelper.CanAccessUserResource(User, reminder.UserId))
             {
                 return Forbid();
             }
@@ -70,12 +68,10 @@ public class RemindersController : ControllerBase
     public async Task<IActionResult> GetRemindersByUser(string userId)
     {
         try
-        {
-            // Check if the user has permission to view these reminders
+        {            // Check if the user has permission to view these reminders
             var currentUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
 
-            if (userRole != "Admin" && userId != currentUserId)
+            if (!RoleHelper.CanAccessUserResource(User, userId))
             {
                 return Forbid();
             }
@@ -99,9 +95,8 @@ public class RemindersController : ControllerBase
 
             // Check if the user has permission to view these reminders
             var currentUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
 
-            if (userRole != "Admin")
+            if (!RoleHelper.IsAdmin(User))
             {
                 // Filter reminders for the current user only
                 reminders = reminders.Where(r => r.UserId == currentUserId).ToList();
@@ -163,11 +158,9 @@ public class RemindersController : ControllerBase
     {
         try
         {
-            // Only allow creating reminders for the current user or if admin
-            var currentUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
+            // Only allow creating reminders for the current user or if admin            var currentUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
-            if (userRole != "Admin" && reminderDto.UserId != currentUserId)
+            if (!RoleHelper.CanAccessUserResource(User, reminderDto.UserId))
             {
                 return Forbid();
             }
@@ -196,13 +189,10 @@ public class RemindersController : ControllerBase
             if (existingReminder == null)
             {
                 return NotFound(new { message = $"Reminder with ID {id} not found" });
-            }
-
-            // Check if the user has permission to mark this reminder as read
+            }            // Check if the user has permission to mark this reminder as read
             var currentUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
 
-            if (userRole != "Admin" && existingReminder.UserId != currentUserId)
+            if (!RoleHelper.CanAccessUserResource(User, existingReminder.UserId))
             {
                 return Forbid();
             }
@@ -230,13 +220,10 @@ public class RemindersController : ControllerBase
             if (existingReminder == null)
             {
                 return NotFound(new { message = $"Reminder with ID {id} not found" });
-            }
-
-            // Check if the user has permission to delete this reminder
+            }            // Check if the user has permission to delete this reminder
             var currentUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
 
-            if (userRole != "Admin" && existingReminder.UserId != currentUserId)
+            if (!RoleHelper.CanAccessUserResource(User, existingReminder.UserId))
             {
                 return Forbid();
             }

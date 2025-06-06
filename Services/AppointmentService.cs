@@ -1,3 +1,4 @@
+using AutoMapper;
 using HealthcareApi.Data;
 using HealthcareApi.DTOs;
 using HealthcareApi.Models;
@@ -20,250 +21,451 @@ public interface IAppointmentService
     Task<AppointmentDto> UpdateAppointmentStatusAsync(string id, AppointmentStatus status);
 }
 
+/// <summary>
+/// Enhanced appointment service with caching, AutoMapper, and comprehensive error handling
+/// </summary>
 public class AppointmentService : IAppointmentService
 {
     private readonly ApplicationDbContext _context;
+    private readonly IMapper _mapper;
+    private readonly ICacheService _cacheService;
+    private readonly ILogger<AppointmentService> _logger;
 
-    public AppointmentService(ApplicationDbContext context)
+    private const string ALL_APPOINTMENTS_CACHE_KEY = "all_appointments";
+    private const string UPCOMING_APPOINTMENTS_CACHE_KEY = "upcoming_appointments";
+    private const string TODAY_APPOINTMENTS_CACHE_KEY = "today_appointments";
+    private const int CACHE_EXPIRY_MINUTES = 15; // Shorter cache for appointments
+
+    public AppointmentService(
+        ApplicationDbContext context,
+        IMapper mapper,
+        ICacheService cacheService,
+        ILogger<AppointmentService> logger)
     {
         _context = context;
+        _mapper = mapper;
+        _cacheService = cacheService;
+        _logger = logger;
     }
-
     public async Task<List<AppointmentDto>> GetAllAppointmentsAsync()
     {
-        var appointments = await _context.Appointments
-            .Include(a => a.Patient)
-            .Include(a => a.Doctor)
-            .ToListAsync();
+        try
+        {
+            // Check cache first
+            var cachedAppointments = await _cacheService.GetAsync<List<AppointmentDto>>(ALL_APPOINTMENTS_CACHE_KEY);
+            if (cachedAppointments != null)
+            {
+                _logger.LogDebug("Retrieved {Count} appointments from cache", cachedAppointments.Count);
+                return cachedAppointments;
+            }
 
-        return appointments.Select(MapToDto).ToList();
+            var appointments = await _context.Appointments
+                .Include(a => a.Patient)
+                .Include(a => a.Doctor)
+                .AsNoTracking()
+                .ToListAsync();
+
+            var appointmentDtos = _mapper.Map<List<AppointmentDto>>(appointments);
+
+            // Cache the result
+            await _cacheService.SetAsync(ALL_APPOINTMENTS_CACHE_KEY, appointmentDtos, TimeSpan.FromMinutes(CACHE_EXPIRY_MINUTES));
+
+            _logger.LogInformation("Retrieved {Count} appointments from database", appointmentDtos.Count);
+            return appointmentDtos;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving all appointments");
+            throw;
+        }
     }
 
     public async Task<AppointmentDto?> GetAppointmentByIdAsync(string id)
     {
-        var appointment = await _context.Appointments
-            .Include(a => a.Patient)
-            .Include(a => a.Doctor)
-            .FirstOrDefaultAsync(a => a.Id == id);
+        try
+        {
+            var cacheKey = $"appointment_{id}";
 
-        return appointment != null ? MapToDto(appointment) : null;
+            // Check cache first
+            var cachedAppointment = await _cacheService.GetAsync<AppointmentDto>(cacheKey);
+            if (cachedAppointment != null)
+            {
+                _logger.LogDebug("Retrieved appointment {AppointmentId} from cache", id);
+                return cachedAppointment;
+            }
+
+            var appointment = await _context.Appointments
+                .Include(a => a.Patient)
+                .Include(a => a.Doctor)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(a => a.Id == id);
+
+            if (appointment == null)
+            {
+                _logger.LogWarning("Appointment with ID {AppointmentId} not found", id);
+                return null;
+            }
+
+            var appointmentDto = _mapper.Map<AppointmentDto>(appointment);
+
+            // Cache the result
+            await _cacheService.SetAsync(cacheKey, appointmentDto, TimeSpan.FromMinutes(CACHE_EXPIRY_MINUTES));
+
+            _logger.LogDebug("Retrieved appointment {AppointmentId} from database", id);
+            return appointmentDto;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving appointment {AppointmentId}", id);
+            throw;
+        }
     }
-
     public async Task<List<AppointmentDto>> GetAppointmentsByDoctorIdAsync(string doctorId)
     {
-        var appointments = await _context.Appointments
-            .Include(a => a.Patient)
-            .Include(a => a.Doctor)
-            .Where(a => a.DoctorId == doctorId)
-            .ToListAsync();
+        try
+        {
+            var cacheKey = $"appointments_doctor_{doctorId}";
 
-        return appointments.Select(MapToDto).ToList();
+            // Check cache first
+            var cachedAppointments = await _cacheService.GetAsync<List<AppointmentDto>>(cacheKey);
+            if (cachedAppointments != null)
+            {
+                _logger.LogDebug("Retrieved {Count} appointments for doctor {DoctorId} from cache", cachedAppointments.Count, doctorId);
+                return cachedAppointments;
+            }
+
+            var appointments = await _context.Appointments
+                .Include(a => a.Patient)
+                .Include(a => a.Doctor)
+                .Where(a => a.DoctorId == doctorId)
+                .AsNoTracking()
+                .ToListAsync();
+
+            var appointmentDtos = _mapper.Map<List<AppointmentDto>>(appointments);
+
+            // Cache the result
+            await _cacheService.SetAsync(cacheKey, appointmentDtos, TimeSpan.FromMinutes(CACHE_EXPIRY_MINUTES));
+
+            _logger.LogInformation("Retrieved {Count} appointments for doctor {DoctorId} from database", appointmentDtos.Count, doctorId);
+            return appointmentDtos;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving appointments for doctor {DoctorId}", doctorId);
+            throw;
+        }
     }
 
     public async Task<List<AppointmentDto>> GetAppointmentsByPatientIdAsync(string patientId)
     {
-        var appointments = await _context.Appointments
-            .Include(a => a.Patient)
-            .Include(a => a.Doctor)
-            .Where(a => a.PatientId == patientId)
-            .ToListAsync();
+        try
+        {
+            var cacheKey = $"appointments_patient_{patientId}";
 
-        return appointments.Select(MapToDto).ToList();
+            // Check cache first
+            var cachedAppointments = await _cacheService.GetAsync<List<AppointmentDto>>(cacheKey);
+            if (cachedAppointments != null)
+            {
+                _logger.LogDebug("Retrieved {Count} appointments for patient {PatientId} from cache", cachedAppointments.Count, patientId);
+                return cachedAppointments;
+            }
+
+            var appointments = await _context.Appointments
+                .Include(a => a.Patient)
+                .Include(a => a.Doctor)
+                .Where(a => a.PatientId == patientId)
+                .AsNoTracking()
+                .ToListAsync();
+
+            var appointmentDtos = _mapper.Map<List<AppointmentDto>>(appointments);
+
+            // Cache the result
+            await _cacheService.SetAsync(cacheKey, appointmentDtos, TimeSpan.FromMinutes(CACHE_EXPIRY_MINUTES));
+
+            _logger.LogInformation("Retrieved {Count} appointments for patient {PatientId} from database", appointmentDtos.Count, patientId);
+            return appointmentDtos;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving appointments for patient {PatientId}", patientId);
+            throw;
+        }
     }
-
     public async Task<List<AppointmentDto>> GetUpcomingAppointmentsAsync()
     {
-        var now = DateTime.UtcNow;
-        var appointments = await _context.Appointments
-            .Include(a => a.Patient)
-            .Include(a => a.Doctor)
-            .Where(a => a.StartTime > now && a.Status != AppointmentStatus.Cancelled)
-            .OrderBy(a => a.StartTime)
-            .ToListAsync();
+        try
+        {
+            // Check cache first
+            var cachedAppointments = await _cacheService.GetAsync<List<AppointmentDto>>(UPCOMING_APPOINTMENTS_CACHE_KEY);
+            if (cachedAppointments != null)
+            {
+                _logger.LogDebug("Retrieved {Count} upcoming appointments from cache", cachedAppointments.Count);
+                return cachedAppointments;
+            }
 
-        return appointments.Select(MapToDto).ToList();
+            var now = DateTime.UtcNow;
+            var appointments = await _context.Appointments
+                .Include(a => a.Patient)
+                .Include(a => a.Doctor)
+                .Where(a => a.StartTime > now && a.Status != AppointmentStatus.Cancelled)
+                .OrderBy(a => a.StartTime)
+                .AsNoTracking()
+                .ToListAsync();
+
+            var appointmentDtos = _mapper.Map<List<AppointmentDto>>(appointments);
+
+            // Cache the result with shorter expiry for time-sensitive data
+            await _cacheService.SetAsync(UPCOMING_APPOINTMENTS_CACHE_KEY, appointmentDtos, TimeSpan.FromMinutes(5));
+
+            _logger.LogInformation("Retrieved {Count} upcoming appointments from database", appointmentDtos.Count);
+            return appointmentDtos;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving upcoming appointments");
+            throw;
+        }
     }
 
     public async Task<List<AppointmentDto>> GetTodaysAppointmentsAsync()
     {
-        var today = DateTime.UtcNow.Date;
-        var tomorrow = today.AddDays(1);
+        try
+        {
+            // Check cache first
+            var cachedAppointments = await _cacheService.GetAsync<List<AppointmentDto>>(TODAY_APPOINTMENTS_CACHE_KEY);
+            if (cachedAppointments != null)
+            {
+                _logger.LogDebug("Retrieved {Count} today's appointments from cache", cachedAppointments.Count);
+                return cachedAppointments;
+            }
 
-        var appointments = await _context.Appointments
-            .Include(a => a.Patient)
-            .Include(a => a.Doctor)
-            .Where(a => a.StartTime >= today && a.StartTime < tomorrow)
-            .OrderBy(a => a.StartTime)
-            .ToListAsync();
+            var today = DateTime.UtcNow.Date;
+            var tomorrow = today.AddDays(1);
 
-        return appointments.Select(MapToDto).ToList();
+            var appointments = await _context.Appointments
+                .Include(a => a.Patient)
+                .Include(a => a.Doctor)
+                .Where(a => a.StartTime >= today && a.StartTime < tomorrow)
+                .OrderBy(a => a.StartTime)
+                .AsNoTracking()
+                .ToListAsync();
+
+            var appointmentDtos = _mapper.Map<List<AppointmentDto>>(appointments);
+
+            // Cache the result with shorter expiry for time-sensitive data
+            await _cacheService.SetAsync(TODAY_APPOINTMENTS_CACHE_KEY, appointmentDtos, TimeSpan.FromMinutes(5));
+
+            _logger.LogInformation("Retrieved {Count} today's appointments from database", appointmentDtos.Count);
+            return appointmentDtos;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving today's appointments");
+            throw;
+        }
     }
-
     public async Task<List<AppointmentDto>> GetAppointmentsByDateRangeAsync(DateTime startDate, DateTime endDate)
     {
-        var appointments = await _context.Appointments
-            .Include(a => a.Patient)
-            .Include(a => a.Doctor)
-            .Where(a => a.StartTime >= startDate && a.StartTime <= endDate)
-            .OrderBy(a => a.StartTime)
-            .ToListAsync();
+        try
+        {
+            _logger.LogDebug("Retrieving appointments between {StartDate} and {EndDate}", startDate, endDate);
 
-        return appointments.Select(MapToDto).ToList();
+            var appointments = await _context.Appointments
+                .Include(a => a.Patient)
+                .Include(a => a.Doctor)
+                .Where(a => a.StartTime >= startDate && a.StartTime <= endDate)
+                .OrderBy(a => a.StartTime)
+                .AsNoTracking()
+                .ToListAsync();
+
+            var appointmentDtos = _mapper.Map<List<AppointmentDto>>(appointments);
+
+            _logger.LogInformation("Found {Count} appointments between {StartDate} and {EndDate}", appointmentDtos.Count, startDate, endDate);
+            return appointmentDtos;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving appointments between {StartDate} and {EndDate}", startDate, endDate);
+            throw;
+        }
     }
-
     public async Task<AppointmentDto> CreateAppointmentAsync(CreateAppointmentDto appointmentDto)
     {
-        // Validate that patient exists
-        var patient = await _context.Users.FindAsync(appointmentDto.PatientId);
-        if (patient == null)
+        try
         {
-            throw new KeyNotFoundException($"Patient with ID {appointmentDto.PatientId} not found");
+            _logger.LogDebug("Creating appointment for patient {PatientId} with doctor {DoctorId}", appointmentDto.PatientId, appointmentDto.DoctorId);
+
+            // Validate that patient exists
+            var patient = await _context.Users.FindAsync(appointmentDto.PatientId);
+            if (patient == null)
+            {
+                throw new KeyNotFoundException($"Patient with ID {appointmentDto.PatientId} not found");
+            }
+
+            // Validate that doctor exists
+            var doctor = await _context.Users.FindAsync(appointmentDto.DoctorId);
+            if (doctor == null || doctor.Role != UserRole.Doctor)
+            {
+                throw new KeyNotFoundException($"Doctor with ID {appointmentDto.DoctorId} not found");
+            }
+
+            // Use AutoMapper to create appointment
+            var appointment = _mapper.Map<Appointment>(appointmentDto);
+
+            _context.Appointments.Add(appointment);
+            await _context.SaveChangesAsync();
+
+            // Invalidate relevant caches
+            await InvalidateAppointmentCaches();
+
+            // Reload with related entities
+            appointment = await _context.Appointments
+                .Include(a => a.Patient)
+                .Include(a => a.Doctor)
+                .FirstOrDefaultAsync(a => a.Id == appointment.Id);
+
+            var appointmentDto_result = _mapper.Map<AppointmentDto>(appointment!);
+            _logger.LogInformation("Created appointment {AppointmentId} for patient {PatientId} with doctor {DoctorId}", appointment!.Id, appointmentDto.PatientId, appointmentDto.DoctorId);
+
+            return appointmentDto_result;
         }
-
-        // Validate that doctor exists
-        var doctor = await _context.Users.FindAsync(appointmentDto.DoctorId);
-        if (doctor == null || doctor.Role != UserRole.Doctor)
+        catch (Exception ex)
         {
-            throw new KeyNotFoundException($"Doctor with ID {appointmentDto.DoctorId} not found");
+            _logger.LogError(ex, "Error creating appointment for patient {PatientId} with doctor {DoctorId}", appointmentDto.PatientId, appointmentDto.DoctorId);
+            throw;
         }
-
-        // Create appointment
-        var appointment = new Appointment
-        {
-            Title = appointmentDto.Title,
-            PatientId = appointmentDto.PatientId,
-            DoctorId = appointmentDto.DoctorId,
-            StartTime = appointmentDto.StartTime,
-            EndTime = appointmentDto.EndTime,
-            Status = appointmentDto.Status,
-            Notes = appointmentDto.Notes
-        };
-
-        _context.Appointments.Add(appointment);
-        await _context.SaveChangesAsync();
-
-        // Reload with related entities
-        appointment = await _context.Appointments
-            .Include(a => a.Patient)
-            .Include(a => a.Doctor)
-            .FirstOrDefaultAsync(a => a.Id == appointment.Id);
-
-        return MapToDto(appointment!);
     }
-
     public async Task<AppointmentDto> UpdateAppointmentAsync(string id, UpdateAppointmentDto appointmentDto)
     {
-        var appointment = await _context.Appointments
-            .Include(a => a.Patient)
-            .Include(a => a.Doctor)
-            .FirstOrDefaultAsync(a => a.Id == id);
-
-        if (appointment == null)
+        try
         {
-            throw new KeyNotFoundException($"Appointment with ID {id} not found");
+            _logger.LogDebug("Updating appointment {AppointmentId}", id);
+
+            var appointment = await _context.Appointments
+                .Include(a => a.Patient)
+                .Include(a => a.Doctor)
+                .FirstOrDefaultAsync(a => a.Id == id);
+
+            if (appointment == null)
+            {
+                throw new KeyNotFoundException($"Appointment with ID {id} not found");
+            }
+
+            // Use AutoMapper for partial updates
+            _mapper.Map(appointmentDto, appointment);
+
+            _context.Appointments.Update(appointment);
+            await _context.SaveChangesAsync();
+
+            // Invalidate relevant caches
+            await InvalidateAppointmentCaches(appointment.Id, appointment.DoctorId, appointment.PatientId);
+
+            var result = _mapper.Map<AppointmentDto>(appointment);
+            _logger.LogInformation("Updated appointment {AppointmentId}", id);
+
+            return result;
         }
-
-        if (!string.IsNullOrEmpty(appointmentDto.Title))
-            appointment.Title = appointmentDto.Title;
-
-        if (appointmentDto.StartTime.HasValue)
-            appointment.StartTime = appointmentDto.StartTime.Value;
-
-        if (appointmentDto.EndTime.HasValue)
-            appointment.EndTime = appointmentDto.EndTime.Value;
-
-        if (appointmentDto.Status.HasValue)
-            appointment.Status = appointmentDto.Status.Value;
-
-        if (appointmentDto.Notes != null) // Allow setting notes to empty string
-            appointment.Notes = appointmentDto.Notes;
-
-        appointment.UpdatedAt = DateTime.UtcNow;
-
-        _context.Appointments.Update(appointment);
-        await _context.SaveChangesAsync();
-
-        return MapToDto(appointment);
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating appointment {AppointmentId}", id);
+            throw;
+        }
     }
 
     public async Task<bool> DeleteAppointmentAsync(string id)
     {
-        var appointment = await _context.Appointments.FindAsync(id);
-
-        if (appointment == null)
+        try
         {
-            return false;
+            _logger.LogDebug("Deleting appointment {AppointmentId}", id);
+
+            var appointment = await _context.Appointments.FindAsync(id);
+
+            if (appointment == null)
+            {
+                _logger.LogWarning("Attempted to delete non-existent appointment {AppointmentId}", id);
+                return false;
+            }
+
+            var doctorId = appointment.DoctorId;
+            var patientId = appointment.PatientId;
+
+            _context.Appointments.Remove(appointment);
+            await _context.SaveChangesAsync();
+
+            // Invalidate relevant caches
+            await InvalidateAppointmentCaches(id, doctorId, patientId);
+
+            _logger.LogInformation("Deleted appointment {AppointmentId}", id);
+            return true;
         }
-
-        _context.Appointments.Remove(appointment);
-        await _context.SaveChangesAsync();
-
-        return true;
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting appointment {AppointmentId}", id);
+            throw;
+        }
     }
-
     public async Task<AppointmentDto> UpdateAppointmentStatusAsync(string id, AppointmentStatus status)
     {
-        var appointment = await _context.Appointments
-            .Include(a => a.Patient)
-            .Include(a => a.Doctor)
-            .FirstOrDefaultAsync(a => a.Id == id);
-
-        if (appointment == null)
+        try
         {
-            throw new KeyNotFoundException($"Appointment with ID {id} not found");
+            _logger.LogInformation("Updating appointment status for ID: {Id} to {Status}", id, status);
+
+            var appointment = await _context.Appointments
+                .Include(a => a.Patient)
+                .Include(a => a.Doctor)
+                .FirstOrDefaultAsync(a => a.Id == id);
+
+            if (appointment == null)
+            {
+                _logger.LogWarning("Appointment not found for ID: {Id}", id);
+                throw new KeyNotFoundException($"Appointment with ID {id} not found");
+            }
+
+            var oldStatus = appointment.Status;
+            appointment.Status = status;
+            appointment.UpdatedAt = DateTime.UtcNow;
+
+            _context.Appointments.Update(appointment);
+            await _context.SaveChangesAsync();
+
+            // Invalidate related caches
+            await InvalidateAppointmentCaches(id, appointment.DoctorId, appointment.PatientId);
+
+            var appointmentDto = _mapper.Map<AppointmentDto>(appointment);
+
+            _logger.LogInformation("Successfully updated appointment {Id} status from {OldStatus} to {NewStatus}",
+                id, oldStatus, status);
+
+            return appointmentDto;
         }
-
-        appointment.Status = status;
-        appointment.UpdatedAt = DateTime.UtcNow;
-
-        _context.Appointments.Update(appointment);
-        await _context.SaveChangesAsync();
-
-        return MapToDto(appointment);
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating appointment status for ID: {Id}", id);
+            throw;
+        }
     }
 
-    private static AppointmentDto MapToDto(Appointment appointment)
+    private async Task InvalidateAppointmentCaches(string? appointmentId = null, string? doctorId = null, string? patientId = null)
     {
-        return new AppointmentDto
+        // Clear general caches
+        await _cacheService.RemoveAsync(ALL_APPOINTMENTS_CACHE_KEY);
+        await _cacheService.RemoveAsync(UPCOMING_APPOINTMENTS_CACHE_KEY);
+        await _cacheService.RemoveAsync(TODAY_APPOINTMENTS_CACHE_KEY);
+
+        // Clear specific caches if provided
+        if (!string.IsNullOrEmpty(appointmentId))
         {
-            Id = appointment.Id,
-            Title = appointment.Title,
-            PatientId = appointment.PatientId,
-            DoctorId = appointment.DoctorId,
-            Patient = appointment.Patient != null
-                ? new UserDto
-                {
-                    Id = appointment.Patient.Id,
-                    Email = appointment.Patient.Email,
-                    FirstName = appointment.Patient.FirstName,
-                    LastName = appointment.Patient.LastName,
-                    Role = appointment.Patient.Role.ToString(),
-                    ProfilePicture = appointment.Patient.ProfilePicture,
-                    Specialization = appointment.Patient.Specialization,
-                    CreatedAt = appointment.Patient.CreatedAt,
-                    UpdatedAt = appointment.Patient.UpdatedAt
-                }
-                : null,
-            Doctor = appointment.Doctor != null
-                ? new UserDto
-                {
-                    Id = appointment.Doctor.Id,
-                    Email = appointment.Doctor.Email,
-                    FirstName = appointment.Doctor.FirstName,
-                    LastName = appointment.Doctor.LastName,
-                    Role = appointment.Doctor.Role.ToString(),
-                    ProfilePicture = appointment.Doctor.ProfilePicture,
-                    Specialization = appointment.Doctor.Specialization,
-                    CreatedAt = appointment.Doctor.CreatedAt,
-                    UpdatedAt = appointment.Doctor.UpdatedAt
-                }
-                : null,
-            StartTime = appointment.StartTime,
-            EndTime = appointment.EndTime,
-            Status = appointment.Status.ToString(),
-            Notes = appointment.Notes,
-            CreatedAt = appointment.CreatedAt,
-            UpdatedAt = appointment.UpdatedAt
-        };
+            await _cacheService.RemoveAsync($"appointment_{appointmentId}");
+        }
+
+        if (!string.IsNullOrEmpty(doctorId))
+        {
+            await _cacheService.RemoveAsync($"appointments_doctor_{doctorId}");
+        }
+
+        if (!string.IsNullOrEmpty(patientId))
+        {
+            await _cacheService.RemoveAsync($"appointments_patient_{patientId}");
+        }
     }
 }
